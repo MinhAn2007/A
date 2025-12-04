@@ -1,207 +1,436 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vortex to Heart to Vy to Fireworks</title>
+
 <style>
-  body {
-    margin: 0;
-    background: #000;
-    overflow: hidden;
-    height: 100vh;
-  }
-  canvas {
-    display: block;
-  }
+    body, html {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        overflow: hidden;
+    }
+    canvas { 
+        background: #000; 
+    }
 </style>
 </head>
+
 <body>
 <canvas id="c"></canvas>
+
 <script>
-const CFG = {
-  PARTICLES: 2200,       // nhiều hạt hơn để tim dày hơn
-  HEART_SCALE: 22,
-  FOCAL: 800,
-  RISE_TIME: 3500,
-  HEART_TIME: 5000,
-  EXPLODE_TIME: 2200,
-  GLOW: 25,
-  COLOR: "#66ccff",      // màu xanh nhạt
-};
-
 const canvas = document.getElementById("c");
-const ctx = canvas.getContext("2d", { alpha: false });
-let W,H,DPR=Math.max(1.8,window.devicePixelRatio||1);
+const ctx = canvas.getContext("2d");
 
-function resize(){
-  W=innerWidth; H=innerHeight;
-  canvas.width=W*DPR; canvas.height=H*DPR;
-  canvas.style.width=W+"px"; canvas.style.height=H+"px";
-  ctx.setTransform(DPR,0,0,DPR,0,0);
+// --- Thiết lập Full Screen ---
+function setCanvasSize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    window.centerX = canvas.width / 2;
+    window.centerY = canvas.height / 2;
 }
-resize();
-window.addEventListener("resize",resize);
+setCanvasSize();
+window.addEventListener('resize', setCanvasSize);
 
-function rand(a=0,b=1){return a+(b-a)*Math.random();}
+const total = 1800; 
+const particles = [];
+const trailParticles = [];
+let time = 0;
+let phase = 0;
+window.centerX = canvas.width / 2;
+window.centerY = canvas.height / 2;
+let phaseTimer = 0;
 
-// ===== TRÁI TIM 3D =====
-function createHeartParticles(count){
-  const points=[];
-  const layers=25;
-  const maxDepth=120;
-  const edgeCount=Math.floor(count*0.6);
-  const innerCount=count-edgeCount;
+/* ---------------------------
+      HÀM TRÁI TIM PARAMETRIC
+----------------------------*/
+function heart(t) {
+  const x = 16 * Math.pow(Math.sin(t), 3);
+  const y = -(13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t));
+  return { x, y };
+}
 
-  // viền
-  for(let l=0;l<layers;l++){
-    const z=(l/(layers-1)-0.5)*maxDepth*2.2;
-    const scale=1-Math.abs(z)/(maxDepth*2.5);
-    const pointsPerLayer=Math.floor(edgeCount/layers);
-    for(let i=0;i<pointsPerLayer;i++){
-      const r=0.88+0.12*Math.random();
-      const t=(i/pointsPerLayer)*Math.PI*2+l*0.08;
-      const x2d=16*Math.pow(Math.sin(t),3);
-      const y2d=-(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t));
-      points.push({
-        x:x2d*r*scale*CFG.HEART_SCALE,
-        y:y2d*r*scale*CFG.HEART_SCALE-H*0.04,
-        z:z+rand(-18,18),
-        isEdge:true
-      });
+/* ---------------------------
+      HÀM ĐỊNH VỊ CHỮ "VY"
+----------------------------*/
+function getVyPosition(i, totalParticles) {
+    const scale = 35;
+    const spacing = 50;
+    const t = i / totalParticles;
+
+    let x = 0, y = 0;
+
+    if (t < 0.5) { 
+        const t_v = (t * 2);
+        
+        if (t_v < 0.5) { 
+            x = -scale + t_v * 2 * scale;
+            y = -scale + t_v * 2 * scale * 2;
+        } else { 
+            const t_right = (t_v - 0.5) * 2;
+            x = 0 + t_right * scale;
+            y = scale - t_right * scale * 2;
+        }
+        x -= spacing;
+        
+    } else { 
+        const t_y = (t - 0.5) * 2;
+        
+        if (t_y < 0.25) {
+            const t_left = t_y * 4;
+            x = -scale * 0.7 + t_left * scale * 0.7;
+            y = -scale + t_left * scale;
+        } else if (t_y < 0.5) {
+            const t_right = (t_y - 0.25) * 4;
+            x = scale * 0.7 - t_right * scale * 0.7;
+            y = -scale + t_right * scale;
+        } else {
+            const t_stem = (t_y - 0.5) * 2;
+            x = 0;
+            y = 0 + t_stem * scale * 1.5;
+        }
+        x += spacing;
     }
-  }
+    
+    return { x: x, y: y };
+}
 
-  // bên trong
-  for(let l=0;l<layers;l++){
-    const z=(l/(layers-1)-0.5)*maxDepth*2.2;
-    const scale=1-Math.abs(z)/(maxDepth*2.5);
-    const pointsPerLayer=Math.floor(innerCount/layers);
-    for(let i=0;i<pointsPerLayer;i++){
-      const r=0.35+0.5*Math.pow(Math.random(),1.5);
-      const t=(i/pointsPerLayer)*Math.PI*2+l*0.12;
-      const x2d=16*Math.pow(Math.sin(t),3);
-      const y2d=-(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t));
-      points.push({
-        x:x2d*r*scale*CFG.HEART_SCALE,
-        y:y2d*r*scale*CFG.HEART_SCALE-H*0.04,
-        z:z+rand(-22,22),
-        isEdge:false
-      });
+/* ---------------------------
+  HÀM CHUYỂN ĐỔI MÀU SẮC (HSL sang Hex)
+----------------------------*/
+function HSLToHex(h, s, l) {
+    h /= 360; s /= 100; l /= 100;
+    let r, g, b;
+    if (s === 0) { r = g = b = l; } else {
+        const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1; if (t > 1) t -= 1;
+            if (t < 1 / 6) return p + (q - p) * 6 * t;
+            if (t < 1 / 2) return q;
+            if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+            return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1 / 3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1 / 3);
     }
-  }
-  return points;
+    const toHex = v => {
+        const hex = Math.round(v * 255).toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+    };
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
-// ===== PARTICLE =====
-class Particle{
-  constructor(target){
-    this.target=target;
-    this.tx=target.x; this.ty=target.y; this.tz=target.z;
-    this.size=rand(1.6,3.8);
-    this.reset();
-  }
-  reset(){
-    this.x=rand(-W*0.45,W*0.45);
-    this.y=H*0.48 + rand(H*0.18,H*0.38);
-    this.z=rand(-150,150);
-    this.alpha=0;
-  }
-  project(){
-    const scale=CFG.FOCAL/(CFG.FOCAL+this.z+30);
-    return {sx:this.x*scale+W/2, sy:this.y*scale+H/2, s:this.size*scale*(1+this.z/700)};
-  }
-  draw(){
-    const {sx,sy,s}=this.project();
-    if(s<0.4) return;
-    ctx.save();
-    // glow nhấp nháy nhẹ
-    const glow = CFG.GLOW + Math.sin(performance.now()*0.01+this.x)*6;
-    ctx.globalAlpha=Math.min(1,this.alpha);
-    ctx.shadowBlur=glow+s*2;
-    ctx.shadowColor=CFG.COLOR;
-    ctx.fillStyle=CFG.COLOR;
-    ctx.beginPath();
-    ctx.arc(sx,sy,s*1.2,0,Math.PI*2);
-    ctx.fill();
-    ctx.restore();
-  }
+/* ---------------------------
+  HÀM EASING MƯỢT MÀ
+----------------------------*/
+function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
-// ===== MAIN =====
-let particles=[], targets=[], stage="rise", t0=performance.now();
-
-function init(){
-  targets=createHeartParticles(CFG.PARTICLES);
-  particles=targets.map(t=>{
-    const p=new Particle(t);
-    p.tx=t.x; p.ty=t.y; p.tz=t.z;
-    return p;
-  });
-  stage="rise"; t0=performance.now();
+function easeOutQuart(t) {
+    return 1 - Math.pow(1 - t, 4);
 }
-init();
 
-function loop(now){
-  const elapsed=now-t0;
-  ctx.fillStyle="rgba(0,0,0,0.10)";
-  ctx.fillRect(0,0,W,H);
+/* ---------------------------
+  TẠO PARTICLES
+----------------------------*/
+for (let i = 0; i < total; i++) {
+    const colorHue = (Math.random() < 0.5) ? (180 + Math.random() * 80) : (330 + Math.random() * 60) % 360; 
+    const isEdge = Math.random() < 0.5;
 
-  // xử lý tim
-  if(stage==="rise"){
-    const p=Math.min(1, elapsed/CFG.RISE_TIME);
-    particles.forEach(pt=>{
-      pt.x+=(pt.tx-pt.x)*0.05*p;
-      pt.y+=(pt.ty-pt.y)*0.05*p;
-      pt.z+=(pt.tz-pt.z)*0.05*p;
-      pt.alpha=p;
-    });
-    if(p>=1){ stage="heart"; t0=now; }
-  } else if(stage==="heart"){
-    const p=elapsed/CFG.HEART_TIME;
-    const rotY=p*Math.PI*1.2;
-    const rotX=Math.sin(p*Math.PI)*0.35;
-    const heartBeat=1+0.16*Math.sin(now*0.005); // tim phồng nhịp tự nhiên
-    particles.forEach(pt=>{
-      let x=pt.tx*Math.cos(rotY)-pt.tz*Math.sin(rotY);
-      let z=pt.tx*Math.sin(rotY)+pt.tz*Math.cos(rotY);
-      let y=pt.ty;
-      y=pt.ty*Math.cos(rotX)-z*Math.sin(rotX);
-      z=pt.ty*Math.sin(rotX)+z*Math.cos(rotX);
-      x*=heartBeat; y*=heartBeat; z*=heartBeat*0.95;
-      pt.x+=(x-pt.x)*0.2;
-      pt.y+=(y-pt.y)*0.2;
-      pt.z+=(z-pt.z)*0.2;
-      pt.alpha=1;
-    });
-    if(p>=1){ stage="explode"; t0=now; }
-  } else if(stage==="explode"){
-    particles.forEach(pt=>{
-      if(!pt.v){
-        const force=rand(14,28);
-        const ang=rand(0,Math.PI*2);
-        const up=rand(0.4,1);
-        pt.vx=Math.cos(ang)*force;
-        pt.vy=-up*force*1.6;
-        pt.vz=Math.sin(ang)*force*0.8;
-        pt.v=true;
+    const p = {
+        x: Math.random() * canvas.width,
+        y: canvas.height + Math.random()*200, 
+        size: 1.5 + Math.random()*1.5,
+        alpha: 0,
+        vx: (Math.random() - 0.5) * 0.56, // Giảm 30% (0.8 * 0.7)
+        vy: - (1.75 + Math.random()*1.75), // Giảm 30% (2.5 * 0.7)
+        t: (i / total) * Math.PI * 2,
+        color: HSLToHex(colorHue, 90, 70 + Math.random() * 20),
+        isEdge: isEdge,
+        angle: Math.random() * Math.PI * 2, 
+        dist: 150 + Math.random() * 150, 
+        targetX: 0,
+        targetY: 0,
+        catchUp: 0,
+        explodeVX: 0,
+        explodeVY: 0,
+        heartRadiusFactor: 0.8 + Math.random() * 0.2,
+        flicker: Math.random() * Math.PI * 2,
+        vyTargetX: 0,
+        vyTargetY: 0,
+        hasExploded: false
+    };
+    
+    const h = heart(p.t);
+    p.targetX = centerX + h.x * 12 * p.heartRadiusFactor;
+    p.targetY = centerY + h.y * 12 * p.heartRadiusFactor;
+
+    const vyPos = getVyPosition(i, total);
+    p.vyTargetX = centerX + vyPos.x;
+    p.vyTargetY = centerY + vyPos.y;
+
+    particles.push(p);
+}
+
+/* ---------------------------
+    TẠO HẠT BỤI RƠI (ÍT HƠN)
+----------------------------*/
+function createTrail(x, y, color) {
+    if (Math.random() < 0.7) {
+        trailParticles.push({
+            x: x + (Math.random() - 0.5) * 3,
+            y: y,
+            size: 0.5 + Math.random() * 1,
+            alpha: 0.4 + Math.random() * 0.4,
+            vy: 0.84 + Math.random() * 1.4, // Giảm 30% (1.2 + 2 = 3.2 * 0.7 = 2.24)
+            vx: (Math.random() - 0.5) * 0.28, // Giảm 30% (0.4 * 0.7)
+            color: color,
+            life: 1
+        });
+    }
+}
+
+/* ---------------------------
+    CẬP NHẬT HẠT BỤI RƠI
+----------------------------*/
+function updateTrails() {
+    for (let i = trailParticles.length - 1; i >= 0; i--) {
+        const t = trailParticles[i];
+        
+        t.x += t.vx;
+        t.y += t.vy;
+        t.alpha -= 0.0126; // Giảm 30% (0.018 * 0.7)
+        t.life -= 0.0126;
+        
+        if (t.alpha <= 0 || t.life <= 0 || t.y > canvas.height) {
+            trailParticles.splice(i, 1);
+            continue;
+        }
+        
+        ctx.save();
+        ctx.globalAlpha = t.alpha * 0.7;
+        ctx.fillStyle = t.color;
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+}
+
+/* ---------------------------
+            ANIMATION
+----------------------------*/
+function animate() {
+  ctx.fillStyle = "rgba(0,0,0, 0.15)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  time += 0.0175; // Giảm 30% (0.025 * 0.7)
+  phaseTimer += 1.12; // Giảm 30% (1.6 * 0.7)
+
+  const beat = 1 + Math.sin(time * 6) * 0.12; 
+  const pulse = 1 + Math.sin(time * 3) * 0.05;
+
+  particles.forEach(p => {
+
+    p.flicker += 0.105; // Giảm 30% (0.15 * 0.7)
+    const flickerAlpha = 0.5 + Math.abs(Math.sin(p.flicker)) * 0.5;
+
+    /* -------- PHASE 0: Nổi Lên ---------- */
+    if (phase === 0) {
+      p.y += p.vy;
+      p.x += p.vx;
+      p.alpha = Math.min(1, p.alpha + 0.0105); // Giảm 30% (0.015 * 0.7)
+      
+      if (Math.random() < 0.2 && p.alpha > 0.3) {
+          createTrail(p.x, p.y, p.color);
       }
-      pt.vy+=0.55;
-      pt.x+=pt.vx; pt.y+=pt.vy; pt.z+=pt.vz;
-      pt.alpha-=0.022; if(pt.alpha<0) pt.alpha=0;
-    });
-    if(elapsed>CFG.EXPLODE_TIME) init();
-  }
+      
+      if (phaseTimer > 343) { // Tăng 43% (240 / 0.7)
+          phase = 1;
+          phaseTimer = 0;
+      }
+    }
 
-  particles.sort((a,b)=>b.z-a.z);
-  particles.forEach(p=>p.draw());
-  requestAnimationFrame(loop);
+    /* -------- PHASE 1: VÒNG XOÁY LỚN (Vortex) -------- */
+    if (phase === 1) {
+        p.angle += 0.049 + (phaseTimer / 2571); // Giảm 30% (0.07 * 0.7, 1800 / 0.7)
+        
+        p.x += (centerX - p.x) * 0.0315; // Giảm 30% (0.045 * 0.7)
+        p.y += (centerY - p.y) * 0.0315;
+
+        p.x += Math.cos(p.angle) * p.dist * 0.056; // Giảm 30% (0.08 * 0.7)
+        p.y += Math.sin(p.angle) * p.dist * 0.056;
+
+        p.dist = Math.max(50, p.dist - 0.84); // Giảm 30% (1.2 * 0.7)
+        
+        if (Math.random() < 0.18) {
+            createTrail(p.x, p.y, p.color);
+        }
+        
+        if (phaseTimer > 309) { // Tăng 43% (216 / 0.7)
+            phase = 2; 
+            phaseTimer = 0;
+            p.catchUp = 0;
+        }
+    }
+
+    /* ------ PHASE 2: CHUYỂN HOÁ THÀNH TRÁI TIM ------ */
+    if (phase === 2) {
+      p.catchUp += 0.028; // Giảm 30% (0.04 * 0.7)
+      if (p.catchUp > 1) p.catchUp = 1;
+
+      const easeRate = easeOutQuart(p.catchUp);
+      
+      p.x += (p.targetX - p.x) * 0.196 * easeRate; // Giảm 30% (0.28 * 0.7)
+      p.y += (p.targetY - p.y) * 0.196 * easeRate;
+
+      p.alpha = flickerAlpha; 
+      
+      if (Math.random() < 0.15) {
+          createTrail(p.x, p.y, p.color);
+      }
+
+      if (p.catchUp >= 0.99 && phaseTimer > 43) { // Tăng 43% (30 / 0.7)
+          phase = 2.5; 
+          phaseTimer = 0;
+      }
+    }
+
+    /* -------- PHASE 2.5: TRÁI TIM ĐANG ĐẬP -------- */
+    if (phase === 2.5) {
+        const h = heart(p.t);
+        const baseX = h.x * 12 * p.heartRadiusFactor;
+        const baseY = h.y * 12 * p.heartRadiusFactor;
+
+        p.x = centerX + baseX * beat;
+        p.y = centerY + baseY * beat;
+
+        p.alpha = flickerAlpha; 
+        
+        if (Math.random() < 0.12) {
+            createTrail(p.x, p.y, p.color);
+        }
+        
+        if (phaseTimer > 257) { // Tăng 43% (180 / 0.7)
+            phase = 2.7;
+            phaseTimer = 0;
+            p.catchUp = 0;
+        }
+    }
+    
+    /* ------ PHASE 2.7: CHUYỂN HOÁ THÀNH CHỮ VY ------ */
+    if (phase === 2.7) {
+        p.catchUp += 0.028; // Giảm 30% (0.04 * 0.7)
+        if (p.catchUp > 1) p.catchUp = 1;
+
+        const easeRate = easeOutQuart(p.catchUp);
+
+        p.x += (p.vyTargetX - p.x) * 0.196 * easeRate; // Giảm 30% (0.28 * 0.7)
+        p.y += (p.vyTargetY - p.y) * 0.196 * easeRate;
+
+        p.alpha = flickerAlpha;
+        
+        if (Math.random() < 0.15) {
+            createTrail(p.x, p.y, p.color);
+        }
+
+        if (p.catchUp >= 0.99 && phaseTimer > 43) { // Tăng 43% (30 / 0.7)
+            phase = 3; 
+            phaseTimer = 0;
+        }
+    }
+
+    /* -------- PHASE 3: CHỮ VY PHÁT SÁNG & XUNG ĐỘNG -------- */
+    if (phase === 3) {
+        const vyPos = getVyPosition(particles.indexOf(p), total);
+        p.x = centerX + vyPos.x * pulse;
+        p.y = centerY + vyPos.y * pulse;
+
+        p.alpha = flickerAlpha;
+        
+        if (Math.random() < 0.12) {
+            createTrail(p.x, p.y, p.color);
+        }
+        
+        if (phaseTimer > 257) { // Tăng 43% (180 / 0.7)
+            phase = 3.5;
+            phaseTimer = 0;
+            p.hasExploded = false;
+        }
+    }
+
+    /* ------ PHASE 3.5: NỔ TUNG/PHÁO HOA TỪ CHỮ VY ------ */
+    if (phase === 3.5) {
+        if (!p.hasExploded) { 
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 8.4 + Math.random() * 12.6; // Giảm 30% (12 + 18 = 30 * 0.7 = 21)
+            p.explodeVX = Math.cos(angle) * speed;
+            p.explodeVY = Math.sin(angle) * speed;
+            p.hasExploded = true;
+        }
+
+        p.x += p.explodeVX;
+        p.y += p.explodeVY;
+        p.explodeVX *= 0.972; // Điều chỉnh ma sát (0.96 -> 0.972 để chậm hơn)
+        p.explodeVY *= 0.972;
+        p.explodeVY += 0.175; // Giảm 30% (0.25 * 0.7)
+
+        p.alpha -= 0.014; // Giảm 30% (0.02 * 0.7)
+        
+        if (Math.random() < 0.3) {
+            createTrail(p.x, p.y, p.color);
+        }
+
+        if (p.alpha <= 0 || phaseTimer > 257) { // Tăng 43% (180 / 0.7)
+            phase = 4; 
+        }
+    }
+
+    /* -------- PHASE 4: Thiết lập lại -------- */
+    if (phase === 4) {
+        p.x = Math.random() * canvas.width;
+        p.y = canvas.height + Math.random()*200;
+        p.alpha = 0;
+        p.vy = - (1.75 + Math.random()*1.75); // Giảm 30%
+        p.flicker = Math.random() * Math.PI * 2;
+        p.hasExploded = false;
+
+        let allReset = particles.every(pt => pt.y > canvas.height);
+        if (allReset) {
+            phase = 0;
+            phaseTimer = 0;
+        }
+    }
+
+    /* ----------- VẼ HẠT CHÍNH ---------- */
+    if (p.alpha > 0) {
+        ctx.save();
+        ctx.globalAlpha = p.alpha * flickerAlpha; 
+        ctx.fillStyle = p.color; 
+
+        ctx.beginPath();
+        const sizeFactor = (phase === 3.5) ? 1.8 : 1; 
+        ctx.arc(p.x, p.y, p.size * sizeFactor, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+  });
+    
+  updateTrails();
+  requestAnimationFrame(animate);
 }
 
-canvas.addEventListener("pointerdown", ()=>{
-  if(stage==="heart"){ stage="explode"; t0=performance.now(); }
-});
-
-requestAnimationFrame(loop);
+animate();
 </script>
+
 </body>
 </html>
